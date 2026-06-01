@@ -1,0 +1,51 @@
+[build-system]
+requires = ["poetry-core>=2.0.0"]
+build-backend = "poetry.core.masonry.api"
+
+[project]
+name = "cv-ranking-system"
+version = "0.0.0"
+description = "AI-powered resume screening and evaluation pipeline."
+readme = "README.md"
+requires-python = ">=3.13,<4.0"
+license = "LicenseRef-UNLICENSED"
+dependencies = [
+    "httpx>=0.27",
+    "numpy>=2.0",
+    "pillow>=10.4",
+    "pydantic>=2.7",
+    "pymupdf>=1.24",
+    "fastapi>=0.111",
+    "python-multipart>=0.0.9",
+    "uvicorn>=0.30",
+]
+
+[project.scripts]
+cvrs = "cv_ranking_system.cli:main"
+
+[tool.poetry]
+package-mode = true
+packages = [{ include = "cv_ranking_system", from = "src" }]
+
+[tool.poetry.dependencies]
+python = ">=3.13,<4.0"
+httpx = ">=0.27"
+numpy = ">=2.0"
+pillow = ">=10.4"
+pydantic = ">=2.7"
+pymupdf = ">=1.24"
+fastapi = ">=0.111"
+python-multipart = ">=0.0.9"
+uvicorn = ">=0.30"
+
+[tool.poetry.group.dev.dependencies]
+ruff = ">=0.6"
+pre-commit = ">=3.0"
+pytest = ">=8.0"
+
+[tool.ruff]
+target-version = "py313"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]

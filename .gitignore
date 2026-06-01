@@ -1,0 +1,95 @@
+# Python / Poetry / tooling
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyd
+.Python
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.pytype/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+.hypothesis/
+.tox/
+.nox/
+.cache/
+pip-wheel-metadata/
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+env/
+
+# Packaging / builds
+build/
+dist/
+*.egg-info/
+*.egg
+
+# Jupyter / IPython
+.ipynb_checkpoints/
+profile_default/
+ipython_config.py
+
+# Editors / OS
+.DS_Store
+Thumbs.db
+Desktop.ini
+*.swp
+*.swo
+*~
+.idea/
+.vscode/
+
+# Logs
+*.log
+
+# Experiments / data artifacts (common in CV/ML projects)
+data/
+datasets/
+artifacts/
+outputs/
+results/
+reports/
+checkpoints/
+runs/
+mlruns/
+wandb/
+tensorboard/
+tb_logs/
+
+# Models / embeddings / indices
+models/
+embeddings/
+indexes/
+indices/
+faiss.index
+*.faiss
+*.index
+
+# Local secrets and environment files
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+secrets.*
+
+# Local config overrides
+config.local.*
+*.local
+
+# SQLite / local storage
+*.sqlite
+*.sqlite3
+
+# Temporary files
+tmp/
+temp/
+.claude/
