@@ -45,3 +45,7 @@ def setup_logging(*, level: str = "INFO") -> None:
     handler.setFormatter(JsonFormatter())
     root.handlers.clear()
     root.addHandler(handler)
+
+def setup_logger(name: str):
+    setup_logging()
+    return logging.getLogger(name)
