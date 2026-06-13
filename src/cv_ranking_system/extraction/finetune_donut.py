@@ -39,7 +39,7 @@ class DonutConfig:
     model_name: str = "naver-clova-ix/donut-base"
     output_dir: str = "./models/donut-finetuned"
     num_epochs: int = 10
-    batch_size: int = 2  # Để mức 2 hoặc 4 để an toàn tuyệt đối cho VRAM
+    batch_size: int = 32 
     learning_rate: float = 2e-5
     max_seq_length: int = 768
     image_size: Tuple[int, int] = field(default_factory=lambda: (640, 480))
@@ -60,7 +60,7 @@ class DonutConfig:
     synthetic_max_samples: int = 100
     
     # Training options
-    gradient_accumulation_steps: int = 4  # Tăng lên để bù cho batch_size nhỏ (batch_size 2 * 4 = batch thực tế là 8)
+    gradient_accumulation_steps: int = 1 
     max_steps: int = -1
     save_steps: int = 500
     eval_steps: int = 250

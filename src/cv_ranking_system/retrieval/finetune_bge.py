@@ -54,7 +54,7 @@ class BGEConfig:
     
     # Training options
     loss_type: str = "contrastive"  # contrastive or triplet
-    gradient_accumulation_steps: int = 8
+    gradient_accumulation_steps: int = 1
     save_steps: int = 500
     eval_steps: int = 250
     early_stopping_patience: int = 3
