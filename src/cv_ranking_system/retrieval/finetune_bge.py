@@ -473,46 +473,51 @@ class BGEFineTuner:
             batch_size=self.config.batch_size,
         )
         
-        # Optimizer
+        scaler = torch.amp.GradScaler("cuda")
+        
         optimizer = AdamW(model.parameters(), lr=self.config.learning_rate, weight_decay=self.config.weight_decay)
         
-        # Scheduler
-        num_training_steps = len(train_dataloader) * self.config.num_epochs
+        # Tính toán lại tổng số step dựa trên gradient_accumulation_steps
+        num_training_steps = (len(train_dataloader) // self.config.gradient_accumulation_steps) * self.config.num_epochs
         scheduler = get_linear_schedule_with_warmup(
             optimizer,
             num_warmup_steps=int(num_training_steps * self.config.warmup_ratio),
             num_training_steps=num_training_steps,
         )
         
-        # Training loop
         for epoch in range(self.config.num_epochs):
             logger.info(f"Epoch {epoch + 1}/{self.config.num_epochs}")
-            
-            # Train
             model.train()
             total_loss = 0
-            for batch in tqdm(train_dataloader, desc="Training"):
-                optimizer.zero_grad()
+            optimizer.zero_grad() # Đưa ra ngoài vòng lặp batch để tích lũy
+            
+            for step, batch in enumerate(tqdm(train_dataloader, desc="Training")):
+                # Chạy forward pass với autocast (FP16)
+                with torch.amp.autocast("cuda"):
+                    resume_embeddings = self._encode_batch(model, batch, "resume", tokenizer)
+                    jd_embeddings = self._encode_batch(model, batch, "jd", tokenizer)
+                    
+                    similarity = torch.nn.functional.cosine_similarity(resume_embeddings, jd_embeddings)
+                    scores = batch["score"].to(self.device)
+                    
+                    # Chia loss cho accumulation steps
+                    loss = torch.nn.functional.mse_loss(similarity, scores)
+                    loss = loss / self.config.gradient_accumulation_steps
                 
-                # Forward pass
-                resume_embeddings = self._encode_batch(model, batch, "resume", tokenizer)
-                jd_embeddings = self._encode_batch(model, batch, "jd", tokenizer)
+                # Backward pass có scale để tránh underflow gradient ở FP16
+                scaler.scale(loss).backward()
+                total_loss += loss.item() * self.config.gradient_accumulation_steps
                 
-                # Compute cosine similarity loss
-                similarity = torch.nn.functional.cosine_similarity(resume_embeddings, jd_embeddings)
-                scores = batch["score"].to(self.device)
-                
-                loss = torch.nn.functional.mse_loss(similarity, scores)
-                
-                loss.backward()
-                optimizer.step()
-                scheduler.step()
-                
-                total_loss += loss.item()
+                # Thực hiện cập nhật trọng số sau khi tích lũy đủ bước
+                if (step + 1) % self.config.gradient_accumulation_steps == 0 or (step + 1) == len(train_dataloader):
+                    scaler.step(optimizer)
+                    scaler.update()
+                    optimizer.zero_grad()
+                    scheduler.step()
             
             avg_loss = total_loss / len(train_dataloader)
             logger.info(f"Average training loss: {avg_loss:.4f}")
-            
+                        
             # Validation
             model.eval()
             val_loss = 0
@@ -567,7 +572,7 @@ def main():
     # Configure
     config = BGEConfig(
         num_epochs=5,
-        batch_size=32,
+        batch_size=4,
         learning_rate=2e-5,
         loss_type="contrastive",
         use_sentence_transformers=True,

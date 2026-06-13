@@ -2,24 +2,18 @@
 Fine-tune Donut (Document Understanding Transformer) for CV/Resume extraction.
 
 This script fine-tunes the Donut model on resume NER datasets to improve
-OCR and information extraction capabilities.
-
-Datasets:
-- Resume NER Training Dataset: https://www.kaggle.com/datasets/yashpwrr/resume-ner-training-dataset
-- Resume Corpus Dataset: https://github.com/vrundag91/Resume-Corpus-Dataset
+OCR and information extraction capabilities using highly RAM-optimized Lazy Loading.
 """
 
 import os
 import json
-import logging
 from pathlib import Path
-from typing import Dict, List, Tuple, Optional
+from typing import Dict, Tuple
 from dataclasses import dataclass, field
-from datetime import datetime
 
 import torch
 import numpy as np
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import Dataset
 from transformers import (
     VisionEncoderDecoderModel,
     DonutProcessor,
@@ -28,10 +22,13 @@ from transformers import (
     EarlyStoppingCallback,
 )
 from datasets import load_dataset
-from PIL import Image
-from tqdm import tqdm
 
+# Import utility (Giữ nguyên theo cấu trúc thư mục của bạn)
 from cv_ranking_system.utils.logging_utils import setup_logger
+from cv_ranking_system.extraction.generate_synthetic_donut import SyntheticCVGenerator
+
+os.environ["HF_HOME"] = "D:/ML/huggingface_cache"
+print("Hugging Face cache directory set to:", os.environ["HF_HOME"])
 
 logger = setup_logger(__name__)
 
@@ -42,23 +39,28 @@ class DonutConfig:
     model_name: str = "naver-clova-ix/donut-base"
     output_dir: str = "./models/donut-finetuned"
     num_epochs: int = 10
-    batch_size: int = 8
-    learning_rate: float = 1e-4
+    batch_size: int = 32 
+    learning_rate: float = 2e-5
     max_seq_length: int = 768
-    image_size: Tuple[int, int] = field(default_factory=lambda: (1280, 960))
+    image_size: Tuple[int, int] = field(default_factory=lambda: (640, 480))
     warmup_steps: int = 500
     weight_decay: float = 0.01
     validation_split: float = 0.1
     seed: int = 42
     device: str = field(default_factory=lambda: "cuda" if torch.cuda.is_available() else "cpu")
     
-    # Data sources
-    use_kaggle_dataset: bool = True
-    use_huggingface_dataset: bool = True
-    local_data_path: Optional[str] = None
+    # Data sources (Ưu tiên dùng dữ liệu giả lập local để tối ưu)
+    use_synthetic_dataset: bool = True
+    use_kaggle_dataset: bool = False
+    use_huggingface_dataset: bool = False
+    local_data_path: str = "./data/donut_dataset"
+    auto_generate_synthetic_data: bool = True
+    regenerate_synthetic_data: bool = False
+    synthetic_source_dataset: str = "cnamuangtoun/resume-job-description-fit"
+    synthetic_max_samples: int = 100
     
     # Training options
-    gradient_accumulation_steps: int = 2
+    gradient_accumulation_steps: int = 1 
     max_steps: int = -1
     save_steps: int = 500
     eval_steps: int = 250
@@ -66,60 +68,43 @@ class DonutConfig:
 
 
 class ResumeDocumentDataset(Dataset):
-    """Dataset for resume documents with OCR/extraction annotations."""
+    """Dataset tối ưu RAM: Chỉ load ảnh từ đĩa khi DataLoader yêu cầu (Lazy Loading)"""
     
     def __init__(
         self,
-        images: List[str],
-        texts: List[str],
+        hf_dataset,
         processor: DonutProcessor,
         max_seq_length: int = 768,
-        image_size: Tuple[int, int] = (1280, 960),
     ):
-        """
-        Initialize the dataset.
-        
-        Args:
-            images: List of image paths or PIL Images
-            texts: List of text/JSON annotations
-            processor: DonutProcessor for preprocessing
-            max_seq_length: Maximum token sequence length
-            image_size: Target image size
-        """
-        self.images = images
-        self.texts = texts
+        self.hf_dataset = hf_dataset
         self.processor = processor
         self.max_seq_length = max_seq_length
-        self.image_size = image_size
-        
-        assert len(images) == len(texts), "Number of images and texts must match"
     
     def __len__(self) -> int:
-        return len(self.images)
+        return len(self.hf_dataset)
     
     def __getitem__(self, idx: int) -> Dict:
-        """Get a sample from the dataset."""
-        # Load image
-        if isinstance(self.images[idx], str):
-            image = Image.open(self.images[idx]).convert("RGB")
-        else:
-            image = self.images[idx]
+        """Lấy 1 sample: Lúc này ảnh mới thực sự được tải vào RAM"""
+        sample = self.hf_dataset[idx]
         
-        # Get text/annotation
-        text = self.texts[idx]
-        
-        # Process image
+        # 1. Xử lý ảnh đầu vào cho Encoder
+        image = sample["image"].convert("RGB")
         pixel_values = self.processor(
             image, 
             return_tensors="pt"
         ).pixel_values.squeeze(0)
         
-        # Process text - format as instruction for Donut
-        # Donut uses <s_resume> for resume understanding
-        full_text = f"<s_resume>{text}</s_resume>"
+        # 2. Xử lý văn bản đích (Target) cho Decoder
+        text = sample["ground_truth"]
         
-        # Tokenize with truncation
-        input_ids = self.processor.tokenizer(
+        # Bọc token nhiệm vụ
+        if "<s_resume>" not in text:
+            full_text = f"<s_resume>{text}</s_resume>" + self.processor.tokenizer.eos_token
+        else:
+            full_text = text + self.processor.tokenizer.eos_token
+        
+        # Tokenize chuỗi đích
+        target_tokenizer_output = self.processor.tokenizer(
             full_text,
             max_length=self.max_seq_length,
             truncation=True,
@@ -127,12 +112,14 @@ class ResumeDocumentDataset(Dataset):
             return_tensors="pt"
         )
         
+        labels = target_tokenizer_output["input_ids"].squeeze(0)
+        
+        # QUAN TRỌNG: Thay thế ID của pad_token bằng -100 để không tính Loss
+        labels[labels == self.processor.tokenizer.pad_token_id] = -100
+        
         return {
             "pixel_values": pixel_values,
-            "input_ids": input_ids["input_ids"].squeeze(0),
-            "attention_mask": input_ids.get("attention_mask", torch.ones_like(input_ids["input_ids"])).squeeze(0),
-            "decoder_input_ids": input_ids["input_ids"].squeeze(0),
-            "decoder_attention_mask": input_ids.get("attention_mask", torch.ones_like(input_ids["input_ids"])).squeeze(0),
+            "labels": labels
         }
 
 
@@ -140,177 +127,134 @@ class DonutFineTuner:
     """Handler for Donut model fine-tuning."""
     
     def __init__(self, config: DonutConfig):
-        """Initialize the fine-tuner."""
         self.config = config
         self.device = torch.device(config.device)
         
-        # Create output directory
         Path(self.config.output_dir).mkdir(parents=True, exist_ok=True)
         
-        # Set random seed
         torch.manual_seed(config.seed)
         np.random.seed(config.seed)
         
         logger.info(f"Initializing Donut fine-tuner on {self.device}")
         logger.info(f"Config: {config}")
+
+    def _split_has_samples(self, split_dir: Path) -> bool:
+        """Return True when an imagefolder split has metadata and image files."""
+        metadata_file = split_dir / "metadata.jsonl"
+        if not metadata_file.exists() or metadata_file.stat().st_size == 0:
+            return False
+
+        image_extensions = {".png", ".jpg", ".jpeg", ".webp"}
+        return any(
+            path.is_file() and path.suffix.lower() in image_extensions
+            for path in split_dir.iterdir()
+        )
+
+    def _synthetic_dataset_ready(self) -> bool:
+        data_dir = Path(self.config.local_data_path)
+        return self._split_has_samples(data_dir / "train")
+
+    def ensure_synthetic_dataset(self) -> None:
+        """Create the local Donut imagefolder dataset when it is missing."""
+        if not self.config.use_synthetic_dataset:
+            return
+
+        if self.config.regenerate_synthetic_data:
+            logger.info("Synthetic Donut data regeneration requested.")
+        elif self._synthetic_dataset_ready():
+            logger.info(f"Using existing synthetic Donut dataset: {self.config.local_data_path}")
+            return
+        elif not self.config.auto_generate_synthetic_data:
+            raise FileNotFoundError(
+                "Synthetic Donut dataset is missing or incomplete. "
+                f"Run generate_synthetic_donut.py or enable auto_generate_synthetic_data. "
+                f"Expected path: {self.config.local_data_path}"
+            )
+
+        logger.info(
+            "Generating synthetic Donut dataset at %s from %s (max_samples=%s)",
+            self.config.local_data_path,
+            self.config.synthetic_source_dataset,
+            self.config.synthetic_max_samples,
+        )
+        generator = SyntheticCVGenerator(
+            output_dir=self.config.local_data_path,
+            image_size=self.config.image_size,
+        )
+        generator.process_and_convert(
+            dataset_name=self.config.synthetic_source_dataset,
+            max_samples=self.config.synthetic_max_samples,
+        )
+
+        if not self._synthetic_dataset_ready():
+            raise RuntimeError(
+                "Synthetic Donut data generation finished, but the dataset is still incomplete."
+            )
     
     def load_model_and_processor(self) -> Tuple[VisionEncoderDecoderModel, DonutProcessor]:
         """Load pre-trained Donut model and processor."""
         logger.info(f"Loading model: {self.config.model_name}")
         
         processor = DonutProcessor.from_pretrained(self.config.model_name)
-        model = VisionEncoderDecoderModel.from_pretrained(self.config.model_name)
+        model = VisionEncoderDecoderModel.from_pretrained(
+            self.config.model_name, 
+            revision="refs/pr/7"  
+        )
         
-        # Update decoder config for resume extraction task
+        # 1. Đăng ký các token cấu trúc đặc biệt vào Tokenizer công khai
+        special_tokens = ["<s_resume>", "</s_resume>"]
+        processor.tokenizer.add_special_tokens({"additional_special_tokens": special_tokens})
+        
+        # 2. Thiết lập cấu hình điều hướng cho Decoder
+        model.config.decoder_start_token_id = processor.tokenizer.convert_tokens_to_ids("<s_resume>")
+        model.config.pad_token_id = processor.tokenizer.pad_token_id
         model.decoder.config.max_position_embeddings = self.config.max_seq_length
-        model.decoder.config.vocab_size = len(processor.tokenizer)
+        
+        # 3. QUAN TRỌNG: Thay đổi kích thước ma trận nhúng của Decoder tương thích số token mới
+        model.decoder.resize_token_embeddings(len(processor.tokenizer))
         
         return model.to(self.device), processor
     
-    def load_kaggle_dataset(self) -> Tuple[List[str], List[str]]:
-        """Load resume NER dataset from Kaggle."""
-        logger.info("Loading Kaggle resume NER dataset...")
-        try:
-            dataset = load_dataset("yashpwrr/resume-ner-training-dataset")
+    def prepare_datasets(self, processor: DonutProcessor) -> Tuple[Dataset, Dataset]:
+        """Chuẩn bị dữ liệu Train/Val trực tiếp từ bộ nhớ đệm đĩa (Zero-RAM bloat)"""
+        logger.info("Preparing datasets with RAM optimization...")
+        
+        if not self.config.use_synthetic_dataset:
+            raise ValueError("Vui lòng kích hoạt use_synthetic_dataset để dùng dữ liệu local.")
             
-            images = []
-            texts = []
+        self.ensure_synthetic_dataset()
+
+        # 1. Tải cấu trúc ImageFolder (Hugging Face quản lý bằng cơ chế ánh xạ bộ nhớ trên ổ đĩa, tốn ~0 MB RAM)
+        logger.info(f"Loading imagefolder from {self.config.local_data_path}")
+        hf_dataset = load_dataset("imagefolder", data_dir=self.config.local_data_path)
+        
+        # 2. Phân chia Train / Validation không dùng List
+        if "validation" in hf_dataset and len(hf_dataset["validation"]) > 0:
+            train_data = hf_dataset["train"]
+            val_data = hf_dataset["validation"]
+        else:
+            logger.info(f"Tự động phân tách dữ liệu theo tỷ lệ validation: {self.config.validation_split}")
+            split_dataset = hf_dataset["train"].train_test_split(
+                test_size=self.config.validation_split, 
+                seed=self.config.seed
+            )
+            train_data = split_dataset["train"]
+            val_data = split_dataset["test"]
             
-            # Process dataset - structure depends on actual Kaggle dataset format
-            for sample in tqdm(dataset["train"], desc="Processing Kaggle dataset"):
-                # Assuming the dataset has 'image' and 'text' or 'ner_tags' fields
-                if "image" in sample and "text" in sample:
-                    images.append(sample["image"])
-                    texts.append(json.dumps({"text": sample["text"], "ner_tags": sample.get("ner_tags", [])}))
-            
-            logger.info(f"Loaded {len(images)} samples from Kaggle dataset")
-            return images, texts
+        logger.info(f"Train samples: {len(train_data)}, Val samples: {len(val_data)}")
         
-        except Exception as e:
-            logger.warning(f"Failed to load Kaggle dataset: {e}")
-            return [], []
-    
-    def load_huggingface_dataset(self) -> Tuple[List[str], List[str]]:
-        """Load resume corpus dataset from HuggingFace."""
-        logger.info("Loading HuggingFace resume dataset...")
-        try:
-            # Note: The exact dataset identifier may need adjustment based on availability
-            dataset = load_dataset("datasetmaster/resumes", split="train")
-            
-            images = []
-            texts = []
-            
-            for sample in tqdm(dataset, desc="Processing HuggingFace dataset"):
-                if "image" in sample and "text" in sample:
-                    images.append(sample["image"])
-                    texts.append(json.dumps({
-                        "text": sample["text"],
-                        "metadata": sample.get("metadata", {})
-                    }))
-            
-            logger.info(f"Loaded {len(images)} samples from HuggingFace dataset")
-            return images, texts
-        
-        except Exception as e:
-            logger.warning(f"Failed to load HuggingFace dataset: {e}")
-            return [], []
-    
-    def load_local_dataset(self, data_path: str) -> Tuple[List[str], List[str]]:
-        """Load dataset from local directory."""
-        logger.info(f"Loading local dataset from {data_path}")
-        
-        images = []
-        texts = []
-        
-        data_dir = Path(data_path)
-        
-        # Expect structure: data_dir/images/ and data_dir/annotations.jsonl
-        images_dir = data_dir / "images"
-        annotations_file = data_dir / "annotations.jsonl"
-        
-        if not images_dir.exists() or not annotations_file.exists():
-            logger.warning(f"Expected directory structure not found in {data_path}")
-            return [], []
-        
-        with open(annotations_file, "r") as f:
-            for line in tqdm(f, desc="Loading local annotations"):
-                annotation = json.loads(line)
-                image_path = images_dir / annotation["image_name"]
-                
-                if image_path.exists():
-                    images.append(str(image_path))
-                    texts.append(json.dumps(annotation.get("extracted_text", "")))
-        
-        logger.info(f"Loaded {len(images)} samples from local dataset")
-        return images, texts
-    
-    def prepare_datasets(self) -> Tuple[Dataset, Dataset]:
-        """Prepare training and validation datasets."""
-        logger.info("Preparing datasets...")
-        
-        all_images = []
-        all_texts = []
-        
-        # Load from multiple sources
-        if self.config.use_kaggle_dataset:
-            images, texts = self.load_kaggle_dataset()
-            all_images.extend(images)
-            all_texts.extend(texts)
-        
-        if self.config.use_huggingface_dataset:
-            images, texts = self.load_huggingface_dataset()
-            all_images.extend(images)
-            all_texts.extend(texts)
-        
-        if self.config.local_data_path:
-            images, texts = self.load_local_dataset(self.config.local_data_path)
-            all_images.extend(images)
-            all_texts.extend(texts)
-        
-        if not all_images:
-            raise ValueError("No datasets loaded. Please configure at least one data source.")
-        
-        logger.info(f"Total samples: {len(all_images)}")
-        
-        # Load processor
-        processor = DonutProcessor.from_pretrained(self.config.model_name)
-        
-        # Split into train/val
-        num_train = int(len(all_images) * (1 - self.config.validation_split))
-        indices = np.random.permutation(len(all_images))
-        
-        train_indices = indices[:num_train]
-        val_indices = indices[num_train:]
-        
-        train_dataset = ResumeDocumentDataset(
-            [all_images[i] for i in train_indices],
-            [all_texts[i] for i in train_indices],
-            processor,
-            self.config.max_seq_length,
-            self.config.image_size,
-        )
-        
-        val_dataset = ResumeDocumentDataset(
-            [all_images[i] for i in val_indices],
-            [all_texts[i] for i in val_indices],
-            processor,
-            self.config.max_seq_length,
-            self.config.image_size,
-        )
-        
-        logger.info(f"Train set: {len(train_dataset)}, Val set: {len(val_dataset)}")
+        # 3. Bọc dữ liệu vào bộ nạp tối ưu RAM
+        train_dataset = ResumeDocumentDataset(train_data, processor, self.config.max_seq_length)
+        val_dataset = ResumeDocumentDataset(val_data, processor, self.config.max_seq_length)
         
         return train_dataset, val_dataset
     
     def train(self):
         """Fine-tune the Donut model."""
-        # Load model and processor
         model, processor = self.load_model_and_processor()
+        train_dataset, eval_dataset = self.prepare_datasets(processor)
         
-        # Prepare datasets
-        train_dataset, eval_dataset = self.prepare_datasets()
-        
-        # Training arguments
+        # Thiết lập cấu hình huấn luyện
         training_args = Seq2SeqTrainingArguments(
             output_dir=self.config.output_dir,
             num_train_epochs=self.config.num_epochs,
@@ -323,21 +267,20 @@ class DonutFineTuner:
             save_steps=self.config.save_steps,
             eval_steps=self.config.eval_steps,
             save_total_limit=3,
-            evaluation_strategy="steps",
+            eval_strategy="steps",
             save_strategy="steps",
             load_best_model_at_end=True,
             metric_for_best_model="eval_loss",
             greater_is_better=False,
-            logging_steps=100,
+            logging_steps=50,
             logging_dir="./logs",
-            report_to=["tensorboard"],
-            remove_unused_columns=False,
+            report_to=["none"],
+            remove_unused_columns=False,  # Bắt buộc False để Seq2SeqTrainer nhận diện trường 'pixel_values'
             push_to_hub=False,
             seed=self.config.seed,
-            fp16=torch.cuda.is_available(),
+            fp16=torch.cuda.is_available(), # Bật Mix Precision để tăng tốc và giảm VRAM
         )
         
-        # Initialize trainer
         trainer = Seq2SeqTrainer(
             model=model,
             args=training_args,
@@ -351,41 +294,41 @@ class DonutFineTuner:
             ],
         )
         
-        # Train
-        logger.info("Starting fine-tuning...")
+        logger.info("Starting Donut fine-tuning...")
         trainer.train()
         
-        # Save final model
-        logger.info(f"Saving model to {self.config.output_dir}")
+        logger.info(f"Saving final model to {self.config.output_dir}")
         model.save_pretrained(self.config.output_dir)
         processor.save_pretrained(self.config.output_dir)
         
-        # Save config
         config_path = Path(self.config.output_dir) / "finetune_config.json"
         with open(config_path, "w") as f:
             json.dump(self.config.__dict__, f, indent=2, default=str)
         
-        logger.info("Fine-tuning completed successfully!")
-        
+        logger.info("Donut fine-tuning completed successfully!")
         return model, processor
 
 
 def main():
-    """Main fine-tuning script."""
-    # Configure
+    """Main script entry point."""
+    # Khởi tạo config tối ưu
     config = DonutConfig(
-        num_epochs=10,
-        batch_size=8,
-        learning_rate=1e-4,
-        use_kaggle_dataset=True,
-        use_huggingface_dataset=True,
+        num_epochs=20,
+        batch_size=2,                
+        gradient_accumulation_steps=4, 
+        learning_rate=2e-5,
+        use_synthetic_dataset=True,  
+        use_kaggle_dataset=False,
+        use_huggingface_dataset=False,
+        local_data_path="./data/donut_dataset" 
     )
     
-    # Fine-tune
     fine_tuner = DonutFineTuner(config)
-    model, processor = fine_tuner.train()
-    
-    logger.info("Donut fine-tuning pipeline completed!")
+    try:
+        model, processor = fine_tuner.train()
+    except Exception as e:
+        logger.error(f"Training failed: {e}")
+        raise
 
 
 if __name__ == "__main__":
