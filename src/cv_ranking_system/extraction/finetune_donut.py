@@ -41,8 +41,8 @@ class DonutConfig:
     num_epochs: int = 10
     batch_size: int = 32 
     learning_rate: float = 2e-5
-    max_seq_length: int = 768
-    image_size: Tuple[int, int] = field(default_factory=lambda: (640, 480))
+    max_seq_length: int = 1536
+    image_size: Tuple[int, int] = field(default_factory=lambda: (1280, 960))
     warmup_steps: int = 500
     weight_decay: float = 0.01
     validation_split: float = 0.1
@@ -74,7 +74,7 @@ class ResumeDocumentDataset(Dataset):
         self,
         hf_dataset,
         processor: DonutProcessor,
-        max_seq_length: int = 768,
+        max_seq_length: int = 1536,
     ):
         self.hf_dataset = hf_dataset
         self.processor = processor
@@ -154,63 +154,55 @@ class DonutFineTuner:
         data_dir = Path(self.config.local_data_path)
         return self._split_has_samples(data_dir / "train")
 
-    def ensure_synthetic_dataset(self) -> None:
-        """Create the local Donut imagefolder dataset when it is missing."""
-        if not self.config.use_synthetic_dataset:
-            return
-
-        if self.config.regenerate_synthetic_data:
-            logger.info("Synthetic Donut data regeneration requested.")
-        elif self._synthetic_dataset_ready():
-            logger.info(f"Using existing synthetic Donut dataset: {self.config.local_data_path}")
-            return
-        elif not self.config.auto_generate_synthetic_data:
-            raise FileNotFoundError(
-                "Synthetic Donut dataset is missing or incomplete. "
-                f"Run generate_synthetic_donut.py or enable auto_generate_synthetic_data. "
-                f"Expected path: {self.config.local_data_path}"
-            )
-
-        logger.info(
-            "Generating synthetic Donut dataset at %s from %s (max_samples=%s)",
-            self.config.local_data_path,
-            self.config.synthetic_source_dataset,
-            self.config.synthetic_max_samples,
-        )
-        generator = SyntheticCVGenerator(
-            output_dir=self.config.local_data_path,
-            image_size=self.config.image_size,
-        )
-        generator.process_and_convert(
-            dataset_name=self.config.synthetic_source_dataset,
-            max_samples=self.config.synthetic_max_samples,
-        )
-
-        if not self._synthetic_dataset_ready():
-            raise RuntimeError(
-                "Synthetic Donut data generation finished, but the dataset is still incomplete."
+    def ensure_synthetic_dataset(self):
+        """Tự động sinh dataset nếu chưa tồn tại cục bộ."""
+        local_path = Path(self.config.local_data_path)
+        
+        if not (local_path / "train" / "metadata.jsonl").exists():
+            logger.info("Dataset không tồn tại cục bộ. Đang tự động sinh dữ liệu từ file NER...")
+            
+            project_root = Path(__file__).resolve().parents[3]
+            
+            ner_data_path = project_root / "data" / "resume_ner" / "train.json"
+            
+            logger.info(f"Đang đọc dữ liệu NER từ đường dẫn động: {ner_data_path}")
+            
+            if not ner_data_path.exists():
+                raise FileNotFoundError(
+                    f"Không tìm thấy file data tại {ner_data_path}. "
+                    f"Vui lòng đảm bảo cấu trúc thư mục data/resume_ner/train.json là chính xác."
+                )
+            
+            generator = SyntheticCVGenerator(output_dir=self.config.local_data_path)
+            generator.process_and_convert(
+                kaggle_json_path=str(ner_data_path),
+                max_samples=100
             )
     
     def load_model_and_processor(self) -> Tuple[VisionEncoderDecoderModel, DonutProcessor]:
-        """Load pre-trained Donut model and processor."""
-        logger.info(f"Loading model: {self.config.model_name}")
-        
+        # ... 
         processor = DonutProcessor.from_pretrained(self.config.model_name)
         model = VisionEncoderDecoderModel.from_pretrained(
             self.config.model_name, 
-            revision="refs/pr/7"  
+            revision="refs/pr/7"
         )
         
-        # 1. Đăng ký các token cấu trúc đặc biệt vào Tokenizer công khai
-        special_tokens = ["<s_resume>", "</s_resume>"]
+        # CẬP NHẬT DANH SÁCH TOKEN MỚI DỰA TRÊN DATA CỦA BẠN
+        special_tokens = [
+            "<s_resume>", "</s_resume>",
+            "<s_skill>", "</s_skill>",
+            "<s_person>", "</s_person>",
+            "<s_education>", "</s_education>",
+            "<s_designation>", "</s_designation>",
+            "<s_company>", "</s_company>",
+            "<s_email>", "</s_email>",
+            "<s_location>", "</s_location>"
+        ]
         processor.tokenizer.add_special_tokens({"additional_special_tokens": special_tokens})
         
-        # 2. Thiết lập cấu hình điều hướng cho Decoder
         model.config.decoder_start_token_id = processor.tokenizer.convert_tokens_to_ids("<s_resume>")
         model.config.pad_token_id = processor.tokenizer.pad_token_id
         model.decoder.config.max_position_embeddings = self.config.max_seq_length
-        
-        # 3. QUAN TRỌNG: Thay đổi kích thước ma trận nhúng của Decoder tương thích số token mới
         model.decoder.resize_token_embeddings(len(processor.tokenizer))
         
         return model.to(self.device), processor
