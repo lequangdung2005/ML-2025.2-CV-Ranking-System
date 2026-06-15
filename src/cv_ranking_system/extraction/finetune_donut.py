@@ -41,7 +41,7 @@ class DonutConfig:
     num_epochs: int = 10
     batch_size: int = 32 
     learning_rate: float = 2e-5
-    max_seq_length: int = 768
+    max_seq_length: int = 1536
     image_size: Tuple[int, int] = field(default_factory=lambda: (1280, 960))
     warmup_steps: int = 500
     weight_decay: float = 0.01
