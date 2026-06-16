@@ -1,0 +1,23 @@
+{
+  "title": "Resume NER Training Dataset - 5,960 Standardized Samples",
+  "id": "resume-ner-training-dataset",
+  "licenses": [
+    {
+      "name": "MIT"
+    }
+  ],
+  "keywords": [
+    "resume",
+    "ner",
+    "named-entity-recognition",
+    "nlp",
+    "training-data",
+    "deberta"
+  ],
+  "description": "5,960 standardized resume samples for NER training with 14 entity categories",
+  "dataset_type": "text",
+  "language": "en",
+  "size_bytes": 63299328,
+  "num_columns": 2,
+  "num_rows": 5960
+}
