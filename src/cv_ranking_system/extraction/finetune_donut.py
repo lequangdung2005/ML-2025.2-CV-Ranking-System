@@ -307,7 +307,7 @@ def main():
     config = DonutConfig(
         num_epochs=20,
         batch_size=32,                
-        gradient_accumulation_steps=4, 
+        gradient_accumulation_steps=1, 
         learning_rate=2e-5,
         use_synthetic_dataset=True,  
         use_kaggle_dataset=False,
