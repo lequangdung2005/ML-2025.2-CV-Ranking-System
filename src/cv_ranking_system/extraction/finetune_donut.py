@@ -315,9 +315,9 @@ def main():
     """Main script entry point."""
     # Khởi tạo config tối ưu
     config = DonutConfig(
-        num_epochs=20,
-        batch_size=32,                
-        gradient_accumulation_steps=1, 
+        num_epochs=50,
+        batch_size=2,                
+        gradient_accumulation_steps=8, 
         learning_rate=2e-5,
         use_synthetic_dataset=True,  
         use_kaggle_dataset=False,
