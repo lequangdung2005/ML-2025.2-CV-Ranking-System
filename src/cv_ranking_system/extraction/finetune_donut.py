@@ -196,7 +196,13 @@ class DonutFineTuner:
             "<s_designation>", "</s_designation>",
             "<s_company>", "</s_company>",
             "<s_email>", "</s_email>",
-            "<s_location>", "</s_location>"
+            "<s_location>", "</s_location>",
+            "<s_projects>", "</s_projects>",
+            "<s_certifications>", "</s_certifications>",
+            "<s_languages>", "</s_languages>",
+            "<s_awards>", "</s_awards>",
+            "<s_volunteer>", "</s_volunteer>"
+            
         ]
         processor.tokenizer.add_special_tokens({"additional_special_tokens": special_tokens})
         
@@ -270,7 +276,11 @@ class DonutFineTuner:
             remove_unused_columns=False,  # Bắt buộc False để Seq2SeqTrainer nhận diện trường 'pixel_values'
             push_to_hub=False,
             seed=self.config.seed,
-            fp16=torch.cuda.is_available(), # Bật Mix Precision để tăng tốc và giảm VRAM
+            bf16=True,                       # BẬT bf16 thay vì fp16 (Bắt buộc cho A100)
+            fp16=False,                      # Tắt fp16 đi
+            tf32=True,                       # Bật chế độ TF32 tính toán ma trận nhanh hơn trên Ampere
+            dataloader_num_workers=8,        # Đa luồng hóa CPU xử lý ảnh (Lazy loading không lo nghẽn nữa)
+            dataloader_pin_memory=True,      # Đẩy nhanh tốc độ truyền dữ liệu từ RAM lên VRAM của A100
         )
         
         trainer = Seq2SeqTrainer(

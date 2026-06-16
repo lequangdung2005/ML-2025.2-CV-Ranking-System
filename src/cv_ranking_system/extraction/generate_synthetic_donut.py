@@ -5,9 +5,25 @@ from PIL import Image, ImageDraw, ImageFont
 from tqdm import tqdm
 import random
 
+# =========================================================================
+# CẤU HÌNH CÁC BẢNG MÀU CHUYÊN NGHIỆP CÓ ĐỘ PHẢN CHIẾU CAO
+# =========================================================================
+THEMES = [
+    {"primary": "#1E3A8A", "text_main": "#1E293B", "text_muted": "#475569", "bg": "#FFFFFF", "sidebar_bg": "#F8FAFC", "line": "#CBD5E1"}, 
+    {"primary": "#064E3B", "text_main": "#0F172A", "text_muted": "#4B5563", "bg": "#FFFFFF", "sidebar_bg": "#F0FDF4", "line": "#BBF7D0"}, 
+    {"primary": "#18181B", "text_main": "#27272A", "text_muted": "#71717A", "bg": "#FFFFFF", "sidebar_bg": "#FAFAFA", "line": "#E4E4E7"}, 
+    {"primary": "#991B1B", "text_main": "#1C1917", "text_muted": "#78716C", "bg": "#FFFDFA", "sidebar_bg": "#FDF6ED", "line": "#FED7AA"}
+]
+def format_donut_gt(temp_dict):
+    gt_string = ""
+    for key, values in temp_dict.items():
+        # values là một list các string, nối lại bằng dấu "; "
+        val_str = "; ".join(values)
+        gt_string += f"<s_{key}>{val_str}</s_{key}>"
+    return gt_string
+
 class SyntheticCVGenerator:
     def __init__(self, output_dir: str = None):
-        # Tự động xác định thư mục gốc của dự án (Project Root)
         self.project_root = Path(__file__).resolve().parents[3]
         
         if output_dir is None:
@@ -21,12 +37,10 @@ class SyntheticCVGenerator:
         self.train_dir.mkdir(parents=True, exist_ok=True)
         self.val_dir.mkdir(parents=True, exist_ok=True)
         
-        # Cố định kích thước chuẩn của trang CV dọc
         self.img_w = 960
         self.img_h = 1280
 
     def _wrap_text(self, text: str, font, max_width: int, draw: ImageDraw.ImageDraw) -> list:
-        """Hàm tự động ngắt dòng khi chữ chạm viền trang."""
         words = str(text).split()
         lines = []
         current_line = []
@@ -44,14 +58,13 @@ class SyntheticCVGenerator:
         return lines
 
     # =========================================================================
-    # BƯỚC 1: ĐỌC DATA GỐC -> TRÍCH XUẤT CHUẨN -> TẠO METADATA.JSONL
+    # BƯỚC 1: LÀM GIÀU DỮ LIỆU KỊCH TRẦN (MAXIMUM DENSITY SCHEMA)
     # =========================================================================
     def create_clean_metadata(self, raw_json_path: str = None, max_samples: int = 150):
-        """Đọc file raw JSON, Cắt bớt phần dài, Mượn chéo phần thiếu -> Lưu metadata.jsonl"""
         if raw_json_path is None:
             raw_json_path = self.project_root / "data" / "resume_ner" / "train.json"
             
-        print(f"📦 [BƯỚC 1] Đang xử lý, augmentation và bóc tách dữ liệu từ: {raw_json_path}...")
+        print(f"📦 [BƯỚC 1] Đang thực hiện tối đa hóa mật độ chữ và phân mục mở rộng...")
         
         if not os.path.exists(raw_json_path):
             raise FileNotFoundError(f"Không tìm thấy file dữ liệu gốc tại {raw_json_path}")
@@ -70,24 +83,136 @@ class SyntheticCVGenerator:
         random.shuffle(raw_data)
         raw_data = raw_data[:max_samples]
         
-        # --- GIAI ĐOẠN 1: XÂY DỰNG "KHO CHỨA" (GLOBAL POOL) ĐỂ MƯỢN CHÉO ---
-        global_pool = {
-            "designation": [], "skill": [], "company": [], 
-            "education": [], "location": [], "email": []
-        }
-        
+        global_pool = {"designation": [], "skill": [], "company": [], "education": [], "location": [], "email": []}
         for sample in raw_data:
             text = sample.get("text", "")
             for ann in sample.get("annotations", []):
                 start, end, label = ann[0], ann[1], ann[2]
                 entity_text = " ".join(text[start:end].strip().split())
                 label_name = label.lower().replace(" ", "_")
-                
                 if len(entity_text) >= 2 and label_name in global_pool:
                     if entity_text not in global_pool[label_name]:
                         global_pool[label_name].append(entity_text)
 
-        # --- GIAI ĐOẠN 2: TẠO METADATA VÀ AUGMENTATION ---
+        # =========================================================================
+        # NGÂN HÀNG DỮ LIỆU SIÊU MỞ RỘNG (LEXICAL DIVERSITY POOLS)
+        # =========================================================================
+        
+        # 1. Câu mô tả hành động (Job Descriptions) - Đa lĩnh vực, cấu trúc dài phức tạp
+        pool_job_descs = [
+            "Spearheaded core architectural planning, microservices migrations, and end-to-end development workflows to drive major milestones.",
+            "Optimized distributed systems throughput, diagnosed memory bottlenecks, and improved server response latency by over 35%.",
+            "Designed scalable relational database structures, implemented strict query caching layers, and orchestrated secure OAuth2 workflows.",
+            "Mentored team members through rigorous code reviews, fostered continuous deployment integrations, and enhanced code coverage to 92%.",
+            "Collaborated directly with engineering leaders to map technical debt and execute high-priority refactoring modules efficiently.",
+            "Managed real-time infrastructure event streaming pipes, mitigating continuous packet delivery issues under high-load production hours.",
+            "Orchestrated cloud infrastructure deployment using Infrastructure as Code (IaC) principles, reducing provisioning time by 50%.",
+            "Enforced strict security protocols, conducted vulnerability assessments, and patched high-risk authorization flaws across legacy web portals.",
+            "Built data ingestion pipelines processing multi-terabyte datasets daily, ensuring high-availability data delivery to analytics clusters.",
+            "Developed responsive user interfaces leveraging state-of-the-art frontend patterns, achieving a 98% Lighthouse performance score.",
+            "Implemented end-to-end automated testing suites incorporating integration, regression, and stress testing models under CI/CD gates.",
+            "Led cross-functional design sprints to translate ambiguous client specifications into production-ready system design documents.",
+            "Architected secure financial transaction modules complying with strict compliance criteria and encryption standard requirements.",
+            "Refactored legacy monolith applications into modular domain-driven services, decreasing cross-team deployment blockers dramatically.",
+            "Monitored multi-cluster Kubernetes deployments, optimizing compute resource allocation and slashing monthly cloud expenditures by 20%."
+        ]
+        
+        # 2. Dự án kỹ thuật chuyên sâu (Projects) - Đa dạng domain từ Web, AI, IoT đến Blockchain
+        pool_projects = [
+            {
+                "name": "Enterprise Microservices E-Commerce Infrastructure", 
+                "tech": "Go, gRPC, Kubernetes, Kafka, Redis", 
+                "desc": "Led the development of a decoupled booking engine processing up to 15,000 requests per minute with robust fault tolerance mechanism."
+            },
+            {
+                "name": "Multi-Modal Deep Learning Document Extractor", 
+                "tech": "Python, PyTorch, HuggingFace, FastAPI, Docker", 
+                "desc": "Built a custom sequence-to-sequence transformer model optimized for parsing multi-lingual structured forms with 96.4% layout accuracy."
+            },
+            {
+                "name": "Distributed Ledger Financial Reconciliation System", 
+                "tech": "Java, Spring Boot, PostgreSQL, Docker, AWS", 
+                "desc": "Engineered an automated data matching core capable of reconciling million-row statements across multi-bank gateways within seconds."
+            },
+            {
+                "name": "Real-Time Event Analytics Stream Engine", 
+                "tech": "Scala, Apache Flink, Redis Cluster, Prometheus", 
+                "desc": "Implemented a zero-egress telemetry dashboard tracking client behavior pipelines across web nodes with sub-second visual refresh cycles."
+            },
+            {
+                "name": "Predictive Maintenance IoT Telemetry Core",
+                "tech": "Python, MQTT, TensorFlow, TimescaleDB, Grafana",
+                "desc": "Deployed anomalous pattern detector algorithms processing machinery sensor streams, forecasting hardware degradation 48 hours in advance."
+            },
+            {
+                "name": "Decentralized Identity Verification Protocol",
+                "tech": "Solidity, Ethereum, Node.js, Web3.js, IPFS",
+                "desc": "Created a zero-knowledge proof compliance gate for secure digital identity validation without disclosing underlying demographic records."
+            },
+            {
+                "name": "Cloud-Native Distributed Log Aggregation Daemon",
+                "tech": "Rust, WebAssembly, ClickHouse, Vector, GCP",
+                "desc": "Engineered a low-footprint scraping daemon processing raw container outputs with efficient parsing speeds and optimal memory constraints."
+            },
+            {
+                "name": "Automated Healthcare Telemetry Orchestrator",
+                "tech": "Python, Django, AWS IoT Core, PostgreSQL, React",
+                "desc": "Designed HIPAA-compliant data transit system streaming patient vitals securely from remote medical devices to active monitoring nodes."
+            },
+            {
+                "name": "High-Frequency Algorithmic Order Matching Engine",
+                "tech": "C++, ZeroMQ, Redis, Linux Kernel Tuning",
+                "desc": "Implemented a customized order execution gateway with sub-millisecond network latency constraints for high-frequency algorithmic equity pairs."
+            }
+        ]
+        
+        # 3. Chứng chỉ quốc tế (Certifications) - Từ Tech, Cloud đến Quản lý dự án
+        pool_certs = [
+            "AWS Certified Solutions Architect - Professional (SAP-C02)",
+            "Google Cloud Certified Professional Cloud Architect",
+            "HashiCorp Certified: Terraform Associate",
+            "Certified Kubernetes Administrator (CKA - CNCF)",
+            "Scrum Alliance Certified Scrum Product Owner (CSPO)",
+            "Microsoft Certified: Azure Solutions Architect Expert",
+            "Certified Information Systems Security Professional (CISSP)",
+            "Certified Ethical Hacker (CEH v12 - EC-Council)",
+            "Project Management Professional (PMP - PMI)",
+            "Professional Scrum Master II (PSM II - Scrum.org)",
+            "Oracle Certified Professional: Java SE 17 Developer",
+            "CompTIA Security+ Certification (SY0-601)"
+        ]
+        
+        # 4. Ngôn ngữ (Languages) - Kết hợp nhiều mức độ chứng chỉ thực tế
+        pool_languages = [
+            "English (Full Professional Proficiency / IELTS 8.0)",
+            "Vietnamese (Native or Bilingual Standard Speaker)",
+            "Japanese (JLPT N2 Business Professional Communication)",
+            "German (Goethe-Zertifikat B2 Threshold Standard)",
+            "French (DELF B2 Upper Intermediate Competency)",
+            "Spanish (DELE B1 Intermediate Communication Standard)",
+            "Korean (TOPIK II Level 4 Academic Proficiency)",
+            "Mandarin Chinese (HSK 4 Conversational Standard)"
+        ]
+
+        # 5. Giải thưởng & Thành tích (Awards)
+        pool_awards = [
+            "First Prize - National Technological Innovation Hackathon (2024)",
+            "Dean's List for Academic Excellence - Top 2% Achievement (2022)",
+            "Outstanding Engineer Merit Award - Corporate Annual Review (2025)",
+            "Best Technical Solution - Inter-University Coding Championship (2023)",
+            "Top Innovator Award - Internal R&D Expedition Showcase (2024)",
+            "Valedictorian Graduate with Highest Distinction Honors (2021)"
+        ]
+
+        # 6. Hoạt động ngoại khóa / Tình nguyện (Volunteer)
+        pool_volunteer = [
+            "Technical Team Lead - Open Source Community Project Contributor",
+            "Volunteer Instructor - Coding for Underprivileged Youth Organization",
+            "Core Organizer - TEDx Local Technical Track Operations Setup",
+            "Tech Mentor - Women In Tech Coding Bootcamp Accelerator Program",
+            "Open-Source Maintainer - Distributed Caching Extension Library Group"
+        ]
+
         split_idx = int(len(raw_data) * 0.9)
         splits = {'train': raw_data[:split_idx], 'validation': raw_data[split_idx:]}
         
@@ -95,239 +220,282 @@ class SyntheticCVGenerator:
             target_dir = self.train_dir if split_name == 'train' else self.val_dir
             metadata_file = target_dir / "metadata.jsonl"
             
-            print(f"📝 Đang ghi file cấu trúc metadata.jsonl cho tập: [{split_name}]")
             generated_count = 0
-            
             with open(metadata_file, "w", encoding="utf-8") as f_meta:
                 for sample in split_data:
                     resume_text = sample.get("text", "")
                     annotations = sample.get("annotations", [])
-                    
                     if len(resume_text) < 100 or not annotations:
                         continue
                     
-                    # 1. Thu thập thực thể gốc của CV hiện tại
                     temp_dict = {}
                     for ann in annotations:
                         start_idx, end_idx, label = ann[0], ann[1], ann[2]
                         entity_text = " ".join(resume_text[start_idx:end_idx].strip().split())
-                        
                         if len(entity_text) < 2 or entity_text.lower() in ["curriculum vitae", "resume", "page", "status", "gender"]:
                             continue
-                            
                         label_name = label.lower().replace(" ", "_")
-                        if label_name not in temp_dict:
-                            temp_dict[label_name] = []
-                        if entity_text not in temp_dict[label_name]:
-                            temp_dict[label_name].append(entity_text)
+                        if label_name not in temp_dict: temp_dict[label_name] = []
+                        if entity_text not in temp_dict[label_name]: temp_dict[label_name].append(entity_text)
                     
-                    # 2. LOGIC CẮT BỚT (TRUNCATE) VÀ MƯỢN CHÉO (BORROW)
-                    # Giới hạn số lượng tối đa để không bị tràn trang
-                    max_limits = {
-                        "skill": 24,       # Tối đa 24 kỹ năng
-                        "designation": 3,  # Tối đa 3 chức danh
-                        "company": 4,      # Tối đa 4 công ty
-                        "education": 3     # Tối đa 3 trường/bằng cấp
+                    # ĐẨY MẠNH NGƯỠNG TỐI THIỂU (MIN-BOUNDS MULTIPLIERS) TOÀN BỘ CÁC TRƯỜNG CƠ BẢN
+                    limits = {
+                        "skill": {"min": 20, "max": 24},       # Gấp đôi lượng skill
+                        "company": {"min": 3, "max": 4},     # Ép buộc 3-4 công ty lớn
+                        "designation": {"min": 3, "max": 4}, 
+                        "education": {"min": 2, "max": 2}    # Ít nhất 2 trường/bằng cấp
                     }
                     
-                    # Các trường bắt buộc phải có để CV trông thực tế
-                    essential_keys = ["designation", "skill", "company", "education"]
+                    for key, bound in limits.items():
+                        if key not in temp_dict: temp_dict[key] = []
+                        current_items = temp_dict[key]
+                        if len(current_items) < bound["min"]:
+                            target_count = random.randint(bound["min"], bound["max"])
+                            needed = target_count - len(current_items)
+                            available = [item for item in global_pool[key] if item not in current_items]
+                            temp_dict[key].extend(random.sample(available, min(needed, len(available))) if available else global_pool[key][:needed])
+                        elif len(current_items) > bound["max"]:
+                            temp_dict[key] = random.sample(current_items, bound["max"])
+
+                    # TIÊM THÊM 4 PHÂN MỤC NÂNG CAO ĐỂ TRANG GIẤY FULL KHÔNG TỲ VẾT
+                    chosen_projects = random.sample(pool_projects, 3) # Luôn lấy hẳn 3 dự án lớn
+                    temp_dict["projects"] = [f"{p['name']} ({p['tech']})" for p in chosen_projects]
+                    project_descriptions = [p['desc'] for p in chosen_projects]
                     
-                    for key in essential_keys:
-                        # Nếu bị thiếu hụt -> Mượn ngẫu nhiên từ Global Pool
-                        if key not in temp_dict or not temp_dict[key]:
-                            # Mượn ngẫu nhiên từ 1 đến max_limits của trường đó
-                            borrow_count = random.randint(1, max_limits.get(key, 3))
-                            if len(global_pool[key]) >= borrow_count:
-                                temp_dict[key] = random.sample(global_pool[key], borrow_count)
-                            else:
-                                temp_dict[key] = global_pool[key].copy()
-                        
-                        # Nếu quá dài -> Cắt bớt phần thừa
-                        elif len(temp_dict[key]) > max_limits[key]:
-                            # Giữ lại ngẫu nhiên thay vì chỉ cắt phần đuôi để tăng độ đa dạng
-                            temp_dict[key] = random.sample(temp_dict[key], max_limits[key])
+                    temp_dict["certifications"] = random.sample(pool_certs, 4) # 4 chứng chỉ
+                    temp_dict["languages"] = random.sample(pool_languages, 2)       # 2 ngôn ngữ
+                    temp_dict["awards"] = random.sample(pool_awards, 2)             # 2 giải thưởng
+                    temp_dict["volunteer"] = random.sample(pool_volunteer, 1)       # 1 hoạt động ngoại khóa
 
-                    if not temp_dict:
-                        continue
+                    if not temp_dict: continue
 
-                    # 3. Chuẩn bị ground_truth cho Donut
+                    # ĐỒNG BỘ TOÀN DIỆN GROUND TRUTH VỚI METADATA
                     gt_parse = {k: "; ".join(v) for k, v in temp_dict.items()}
                     
-                    # 4. TỰ ĐỘNG DỰNG TEXT CV CHUẨN
+                    # --- XÂY DỰNG CHUỖI TEXT RENDER TOÀN DIỆN ---
                     structured_text_lines = []
                     
-                    name_list = temp_dict.get("person", ["PROFESSIONAL CANDIDATE"])
+                    # Header
+                    name_list = temp_dict.get("person", ["EXECUTIVE CANDIDATE"])
                     structured_text_lines.append(f"HEADER_NAME: {name_list[0].upper()}")
-                    
                     contact_info = []
                     emails = temp_dict.get("email", [])
                     locations = temp_dict.get("location", [])
-                    
-                    if not emails and global_pool["email"]:
-                        emails = [random.choice(global_pool["email"])]
-                    if not locations and global_pool["location"]:
-                        locations = [random.choice(global_pool["location"])]
-                        
+                    if not emails and global_pool["email"]: emails = [random.choice(global_pool["email"])]
+                    if not locations and global_pool["location"]: locations = [random.choice(global_pool["location"])]
                     if emails: contact_info.append(emails[0])
                     if locations: contact_info.append(locations[0])
+                    if contact_info: structured_text_lines.append(f"HEADER_CONTACT: {'  |  '.join(contact_info)}")
                     
-                    if contact_info:
-                        structured_text_lines.append(f"HEADER_CONTACT: {'  |  '.join(contact_info)}")
+                    # Summary
+                    structured_text_lines.append("SECTION_TITLE: PROFESSIONAL SUMMARY")
+                    structured_text_lines.append("SUMMARY_TEXT: Highly adaptive, results-oriented engineering professional with an extensive track record of delivering scalable web architectures and robust algorithmic infrastructures. Proven capability to analyze code performance, mitigate database bottlenecks, and execute seamless product feature integrations in fast-paced agile development frameworks.")
                     
-                    # Thứ tự các mục lớn
-                    sections_order = [
-                        ("designation", "PROFESSIONAL ROLES & OBJECTIVES"),
-                        ("skill", "CORE COMPETENCIES & TECHNICAL SKILLS"),
-                        ("company", "EMPLOYMENT HISTORY"),
-                        ("education", "ACADEMIC & EDUCATION BACKGROUND")
-                    ]
+                    # Skills (Gom 4 skill một dòng)
+                    structured_text_lines.append("SECTION_TITLE: CORE COMPETENCIES & TECHNICAL SKILLS")
+                    for i in range(0, len(temp_dict["skill"]), 4):
+                        structured_text_lines.append(f"BULLET: {', '.join(temp_dict['skill'][i:i+4])}")
                     
-                    for key, section_title in sections_order:
-                        if key in temp_dict and temp_dict[key]:
-                            structured_text_lines.append(f"SECTION_TITLE: {section_title}")
-                            
-                            items = temp_dict[key]
-                            if key == "skill":
-                                # Gom 6-8 skill lại thành 1 gạch đầu dòng
-                                chunk_size = 6
-                                for i in range(0, len(items), chunk_size):
-                                    chunk = items[i:i+chunk_size]
-                                    structured_text_lines.append(f"BULLET: {', '.join(chunk)}")
-                            else:
-                                for item in items:
-                                    structured_text_lines.append(f"BULLET: {item}")
+                    # Experience (Mỗi nơi tăng lên 3 gạch đầu dòng dài)
+                    structured_text_lines.append("SECTION_TITLE: PROFESSIONAL EXPERIENCE")
+                    designations = temp_dict.get("designation", ["Senior Software Specialist"])
+                    for idx, comp in enumerate(temp_dict["company"]):
+                        desig = designations[idx % len(designations)]
+                        structured_text_lines.append(f"BULLET_HEADER: {desig.upper()}  |  {comp} ({2018 + idx} - {2021 + idx if idx < 2 else 'Present'})")
+                        for desc in random.sample(pool_job_descs, 3): # Luôn ép 3 gạch đầu dòng chi tiết
+                            structured_text_lines.append(f"BULLET_DESC: {desc}")
                                 
-                    # Các trường rác còn lại
-                    for key, values in temp_dict.items():
-                        if key not in ["person", "email", "location", "designation", "skill", "company", "education"]:
-                            # Tránh in những list rác quá dài
-                            if len(values) > 10:
-                                values = random.sample(values, 10)
+                    # Projects (3 dự án lớn kèm mô tả chi tiết)
+                    structured_text_lines.append("SECTION_TITLE: KEY ENGINEERING PROJECTS")
+                    for idx, proj_str in enumerate(temp_dict["projects"]):
+                        structured_text_lines.append(f"BULLET_HEADER: {proj_str}")
+                        structured_text_lines.append(f"BULLET_DESC: {project_descriptions[idx]}")
                                 
-                            structured_text_lines.append(f"SECTION_TITLE: ADDITIONAL {key.upper()}")
-                            chunk_size = 4
-                            for i in range(0, len(values), chunk_size):
-                                chunk = values[i:i+chunk_size]
-                                structured_text_lines.append(f"BULLET: {', '.join(chunk)}")
+                    # Education
+                    structured_text_lines.append("SECTION_TITLE: ACADEMIC & EDUCATION BACKGROUND")
+                    for edu in temp_dict["education"]:
+                        structured_text_lines.append(f"BULLET_HEADER: {edu} (Graduated Timeline Study)")
+                    
+                    # Certifications
+                    structured_text_lines.append("SECTION_TITLE: PROFESSIONAL CERTIFICATIONS")
+                    for cert in temp_dict["certifications"]:
+                        structured_text_lines.append(f"BULLET: {cert}")
+                        
+                    # Awards
+                    structured_text_lines.append("SECTION_TITLE: HONORS & AWARDS")
+                    for award in temp_dict["awards"]:
+                        structured_text_lines.append(f"BULLET: {award}")
+
+                    # Volunteer
+                    structured_text_lines.append("SECTION_TITLE: VOLUNTEER & LEADERSHIP")
+                    for vol in temp_dict["volunteer"]:
+                        structured_text_lines.append(f"BULLET: {vol}")
+
+                    # Languages
+                    structured_text_lines.append("SECTION_TITLE: LANGUAGES")
+                    for lang in temp_dict["languages"]:
+                        structured_text_lines.append(f"BULLET: {lang}")
+
+                    layout_type = random.choice(["single_column", "two_column"])
+                    theme_idx = random.randint(0, len(THEMES) - 1)
 
                     img_filename = f"synthetic_cv_{split_name}_{generated_count:05d}.png"
-                    
                     line_entry = {
                         "file_name": img_filename,
-                        "ground_truth": json.dumps({"gt_parse": gt_parse}, ensure_ascii=False),
-                        "text_render": "\n".join(structured_text_lines)
+                        "ground_truth": format_donut_gt(temp_dict),
+                        "text_render": "\n".join(structured_text_lines),
+                        "layout_type": layout_type,
+                        "theme_idx": theme_idx
                     }
-                    
                     f_meta.write(json.dumps(line_entry, ensure_ascii=False) + "\n")
                     generated_count += 1
                     
             print(f"✅ Đã tạo thành công file metadata.jsonl sạch với {generated_count} mẫu cho [{split_name}].")
-            
+
     # =========================================================================
-    # BƯỚC 2: ĐỌC METADATA.JSONL -> ĐỒNG BỘ VÀ VẼ ẢNH CV
+    # BƯỚC 2: RENDER ẢNH - ĐẢM BẢO CHỮ TRẢI KHÍT TRANG GIẤY
     # =========================================================================
     def generate_images_from_metadata(self):
-        """Đọc trực tiếp từ file metadata.jsonl đã tạo ở Bước 1 để vẽ ảnh chuẩn 100%"""
-        print("🎨 [BƯỚC 2] Đang tiến hành đọc file metadata để dựng ảnh CV chuẩn hóa...")
-        
+        print("🎨 [BƯỚC 2] Đang đọc file metadata và tiến hành dựng đa dạng layout hình ảnh...")
         for split_name in ['train', 'validation']:
             target_dir = self.train_dir if split_name == 'train' else self.val_dir
             metadata_file = target_dir / "metadata.jsonl"
-            
-            if not metadata_file.exists():
-                print(f"⚠️ Không tìm thấy file metadata tại {metadata_file}, bỏ qua tập {split_name}.")
-                continue
+            if not metadata_file.exists(): continue
                 
-            # Đọc danh sách cấu trúc để chạy Tqdm
             with open(metadata_file, "r", encoding="utf-8") as f:
                 lines = [json.loads(line) for line in f if line.strip()]
                 
-            print(f"🖼️ Dựng {len(lines)} ảnh CV cho tập [{split_name}]...")
-            
+            print(f"🖼️ Đang sinh {len(lines)} ảnh cho tập [{split_name}]...")
             for item in tqdm(lines):
-                img_filename = item["file_name"]
-                text_render = item["text_render"]
-                output_path = target_dir / img_filename
-                
-                # Thực hiện vẽ ảnh từ cấu trúc chữ sạch
-                self._render_single_cv_image(text_render, output_path)
-                
-        print("🎉 Toàn bộ pipeline Tạo Metadata và Dựng ảnh đã hoàn tất hoàn hảo!")
+                self._render_single_cv_image(
+                    structured_text=item["text_render"],
+                    output_path=target_dir / item["file_name"],
+                    layout_type=item.get("layout_type", "single_column"),
+                    theme_idx=item.get("theme_idx", 0)
+                )
 
-    def _render_single_cv_image(self, structured_text: str, output_path: Path):
-        """Hàm lõi dựng đồ họa cho trang giấy CV"""
-        image = Image.new("RGB", (self.img_w, self.img_h), "#F8FAFC") 
+    def _render_single_cv_image(self, structured_text: str, output_path: Path, layout_type: str, theme_idx: int):
+        theme = THEMES[theme_idx]
+        COLOR_PRIMARY = theme["primary"]
+        COLOR_TEXT_MAIN = theme["text_main"]
+        COLOR_TEXT_MUTED = theme["text_muted"]
+        COLOR_LINE = theme["line"]
+
+        image = Image.new("RGB", (self.img_w, self.img_h), theme["bg"])
         draw = ImageDraw.Draw(image)
 
+        # Định hình độ rộng Sidebar lớn hơn một chút (340px) để chứa lượng chữ đậm đặc mới
+        if layout_type == "two_column":
+            draw.rectangle([(0, 0), (340, self.img_h)], fill=theme["sidebar_bg"])
+
         try:
-            font_name = "calibri.ttf"  
-            font_title = ImageFont.truetype(font_name, 26)
-            font_subtitle = ImageFont.truetype(font_name, 13)
-            font_header = ImageFont.truetype(font_name, 16)
-            font_body = ImageFont.truetype(font_name, 13)
+            font_title = ImageFont.truetype("liberationb.ttf", 25)
+            font_subtitle = ImageFont.truetype("liberation.ttf", 12)
+            font_header = ImageFont.truetype("liberationb.ttf", 14)
+            font_body = ImageFont.truetype("liberation.ttf", 12)
+            font_body_bold = ImageFont.truetype("liberationb.ttf", 12)
         except IOError:
-            font_title = font_subtitle = font_header = font_body = ImageFont.load_default()
-
-        COLOR_PRIMARY = "#1E3A8A"   
-        COLOR_TEXT_MAIN = "#1E293B" 
-        COLOR_TEXT_MUTED = "#64748B"
-        COLOR_LINE = "#CBD5E1"      
-
-        margin_left = 75
-        margin_right = 75
-        y_pointer = 60
+            try:
+                font_title = ImageFont.truetype("calibrib.ttf", 25)
+                font_subtitle = ImageFont.truetype("calibri.ttf", 12)
+                font_header = ImageFont.truetype("calibrib.ttf", 14)
+                font_body = ImageFont.truetype("calibri.ttf", 12)
+                font_body_bold = ImageFont.truetype("calibrib.ttf", 12)
+            except IOError:
+                font_title = font_subtitle = font_header = font_body = font_body_bold = ImageFont.load_default()
 
         lines = structured_text.split('\n')
+        header_lines = []
+        sections = []
+        current_section = None
         
         for line in lines:
-            if y_pointer > self.img_h - 60:
-                break
-                
-            if line.startswith("HEADER_NAME:"):
-                name_text = line.replace("HEADER_NAME:", "").strip()
-                name_bbox = draw.textbbox((0, 0), name_text, font=font_title)
-                name_w = name_bbox[2] - name_bbox[0]
-                draw.text(((self.img_w - name_w) // 2, y_pointer), name_text, font=font_title, fill=COLOR_PRIMARY)
-                y_pointer += 45
-                
-            elif line.startswith("HEADER_CONTACT:"):
-                contact_text = line.replace("HEADER_CONTACT:", "").strip()
-                info_bbox = draw.textbbox((0, 0), contact_text, font=font_subtitle)
-                info_w = info_bbox[2] - info_bbox[0]
-                draw.text(((self.img_w - info_w) // 2, y_pointer), contact_text, font=font_subtitle, fill=COLOR_TEXT_MUTED)
-                y_pointer += 50
-                
+            if line.startswith("HEADER_NAME:") or line.startswith("HEADER_CONTACT:"):
+                header_lines.append(line)
             elif line.startswith("SECTION_TITLE:"):
-                title_text = line.replace("SECTION_TITLE:", "").strip()
-                y_pointer += 15 
-                draw.text((margin_left, y_pointer), title_text, font=font_header, fill=COLOR_PRIMARY)
-                y_pointer += 22
-                draw.line([(margin_left, y_pointer), (self.img_w - margin_right, y_pointer)], fill=COLOR_LINE, width=1)
-                y_pointer += 15
-                
-            elif line.startswith("BULLET:"):
-                bullet_content = "• " + line.replace("BULLET:", "").strip()
-                max_txt_w = self.img_w - margin_left - margin_right - 20
-                wrapped_lines = self._wrap_text(bullet_content, font_body, max_txt_w, draw)
-                
-                for idx, w_line in enumerate(wrapped_lines):
-                    if y_pointer > self.img_h - 60: 
-                        break
-                    current_indent = margin_left if idx == 0 else margin_left + 15
-                    draw.text((current_indent, y_pointer), w_line, font=font_body, fill=COLOR_TEXT_MAIN)
-                    y_pointer += 22
-                y_pointer += 4
+                current_section = {"title": line.replace("SECTION_TITLE:", "").strip(), "lines": []}
+                sections.append(current_section)
+            else:
+                if current_section is not None:
+                    current_section["lines"].append(line)
+
+        y_pointer = 55
+
+        # Render Header
+        if layout_type == "single_column":
+            for line in header_lines:
+                txt = line.split(":", 1)[1].strip()
+                font = font_title if "NAME" in line else font_subtitle
+                color = COLOR_PRIMARY if "NAME" in line else COLOR_TEXT_MUTED
+                w = draw.textbbox((0, 0), txt, font=font)[2] - draw.textbbox((0, 0), txt, font=font)[0]
+                draw.text(((self.img_w - w) // 2, y_pointer), txt, font=font, fill=color)
+                y_pointer += 35
+            y_pointer += 10
+        else:
+            for line in header_lines:
+                txt = line.split(":", 1)[1].strip()
+                font = font_title if "NAME" in line else font_subtitle
+                color = COLOR_PRIMARY if "NAME" in line else COLOR_TEXT_MUTED
+                draw.text((375, y_pointer), txt, font=font, fill=color)
+                y_pointer += 34
+            y_pointer += 15
+
+        # Hàm render một section block
+        def draw_section_block(sec, x_start, max_width, y_start):
+            y = y_start
+            if y > self.img_h - 45: return y
+            
+            draw.text((x_start, y), sec["title"], font=font_header, fill=COLOR_PRIMARY)
+            y += 18
+            draw.line([(x_start, y), (x_start + max_width, y)], fill=COLOR_LINE, width=1)
+            y += 10
+            
+            for l in sec["lines"]:
+                if y > self.img_h - 45: break
+                if l.startswith("SUMMARY_TEXT:"):
+                    wrapped = self._wrap_text(l.replace("SUMMARY_TEXT:", "").strip(), font_body, max_width, draw)
+                    for wl in wrapped:
+                        draw.text((x_start, y), wl, font=font_body, fill=COLOR_TEXT_MAIN); y += 18
+                    y += 4
+                elif l.startswith("BULLET_HEADER:"):
+                    wrapped = self._wrap_text("• " + l.replace("BULLET_HEADER:", "").strip(), font_body_bold, max_width, draw)
+                    for wl in wrapped:
+                        draw.text((x_start, y), wl, font=font_body_bold, fill=COLOR_TEXT_MAIN); y += 18
+                elif l.startswith("BULLET_DESC:"):
+                    wrapped = self._wrap_text("- " + l.replace("BULLET_DESC:", "").strip(), font_body, max_width - 15, draw)
+                    for wl in wrapped:
+                        draw.text((x_start + 15, y), wl, font=font_body, fill=COLOR_TEXT_MUTED); y += 17
+                elif l.startswith("BULLET:"):
+                    wrapped = self._wrap_text("• " + l.replace("BULLET:", "").strip(), font_body, max_width, draw)
+                    for idx, wl in enumerate(wrapped):
+                        indent = x_start if idx == 0 else x_start + 12
+                        draw.text((indent, y), wl, font=font_body, fill=COLOR_TEXT_MAIN); y += 18
+                    y += 4
+            return y + 14
+
+        # --- ĐIỀU PHỐI LAYOUT CHẶT CHẼ ĐỂ TRÁNH TRỐNG TRANG GIẤY ---
+        if layout_type == "single_column":
+            for sec in sections:
+                y_pointer = draw_section_block(sec, 75, 810, y_pointer)
+        else:
+            y_sidebar = 55
+            y_main = y_pointer
+            
+            # Phân bổ thông minh giúp cả 2 cột dài tương đương nhau và kéo sát chân trang
+            sidebar_keywords = ["COMPETENCIES", "ACADEMIC", "CERTIFICATIONS", "HONORS", "LANGUAGES", "ADDITIONAL"]
+            for sec in sections:
+                is_sidebar = any(kw in sec["title"] for kw in sidebar_keywords)
+                if is_sidebar:
+                    # Cột sidebar trái (rộng 280px bên trong vùng 340px)
+                    y_sidebar = draw_section_block(sec, 30, 280, y_sidebar)
+                else:
+                    # Cột main phải (Summary, Experience, Projects, Volunteer)
+                    y_main = draw_section_block(sec, 375, 510, y_main)
 
         image.save(output_path, "PNG")
 
 
 if __name__ == "__main__":
-    # Khởi chạy pipeline 2 bước quy chuẩn
     generator = SyntheticCVGenerator()
-    
-    # Bước 1: Trích xuất sạch -> Tạo file metadata.jsonl trước
     generator.create_clean_metadata(max_samples=150)
-    
-    # Bước 2: Đọc file metadata.jsonl -> Dựng ảnh CV tương ứng theo cấu trúc chuẩn
     generator.generate_images_from_metadata()
