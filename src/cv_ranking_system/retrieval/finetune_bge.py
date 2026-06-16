@@ -231,17 +231,13 @@ class BGEFineTuner:
 
     def _preprocess_text(self, text: str) -> str:
         """
-        Dọn dẹp text: Cực kỳ quan trọng để nối với Donut.
-        Loại bỏ các token dạng <s_skill>, </s_skill> của Donut để BGE đọc hiểu text thuần túy.
+        Giữ lại các tag của Donut để BGE học được trọng số từ các trường thông tin quan trọng.
         """
         if not isinstance(text, str):
             return ""
-        # Xóa các tag XML/Donut format
-        text = re.sub(r'</?s_[^>]+>', ' ', text)
-        # Chuẩn hóa khoảng trắng
         text = " ".join(text.split())
         return text.strip()
-
+    
     def _normalize_score(self, score: Any, default: float = 0.5) -> float:
         """Normalize different score formats to a 0..1 float."""
         if score is None:
@@ -499,7 +495,7 @@ class BGEFineTuner:
             logger.warning(f"Data file not found: {data_path}")
             return [], [], []
         
-        with open(data_file, "r") as f:
+        with open(data_file, "r", encoding="utf-8") as f:
             for line in tqdm(f, desc="Loading local data"):
                 try:
                     item = json.loads(line)
@@ -607,6 +603,16 @@ class BGEFineTuner:
         )
         model.max_seq_length = self.config.max_seq_length
 
+        special_tokens = [
+            "<s_resume>", "</s_resume>", "<s_skill>", "</s_skill>",
+            "<s_person>", "</s_person>", "<s_education>", "</s_education>",
+            "<s_designation>", "</s_designation>", "<s_company>", "</s_company>",
+            "<s_email>", "</s_email>", "<s_location>", "</s_location>"
+        ]
+        word_embedding_model = model._first_module()
+        word_embedding_model.tokenizer.add_tokens(special_tokens, special_tokens=True)
+        word_embedding_model.auto_model.resize_token_embeddings(len(word_embedding_model.tokenizer))
+        
         # Prepare training examples
         train_examples = []
         for resume, jd, score in zip(resumes, jds, scores):
@@ -665,6 +671,15 @@ class BGEFineTuner:
         # Load model and tokenizer
         tokenizer = AutoTokenizer.from_pretrained(self.config.model_name)
         model = AutoModel.from_pretrained(self.config.model_name).to(self.device)
+        
+        special_tokens = [
+            "<s_resume>", "</s_resume>", "<s_skill>", "</s_skill>",
+            "<s_person>", "</s_person>", "<s_education>", "</s_education>",
+            "<s_designation>", "</s_designation>", "<s_company>", "</s_company>",
+            "<s_email>", "</s_email>", "<s_location>", "</s_location>"
+        ]
+        tokenizer.add_tokens(special_tokens, special_tokens=True)
+        model.resize_token_embeddings(len(tokenizer))
         
         # Prepare datasets
         train_dataset, val_dataset = self.prepare_datasets()
@@ -791,8 +806,9 @@ def main():
         learning_rate=2e-5,
         loss_type="similarity",
         use_sentence_transformers=True,
-        use_resume_jd_dataset=True,
-        use_resume_score_dataset=True,
+        use_resume_jd_dataset=False,     
+        use_resume_score_dataset=False,  
+        local_data_path="./data/bge_tagged_data.jsonl",
         use_amp=True,
     )
     
