@@ -38,12 +38,12 @@ class DonutConfig:
     """Configuration for Donut fine-tuning."""
     model_name: str = "naver-clova-ix/donut-base"
     output_dir: str = "./models/donut-finetuned"
-    num_epochs: int = 10
-    batch_size: int = 32 
+    num_epochs: int = 15
+    batch_size: int = 4
     learning_rate: float = 2e-5
     max_seq_length: int = 1536
     image_size: Tuple[int, int] = field(default_factory=lambda: (1280, 960))
-    warmup_steps: int = 500
+    warmup_steps: int = 70
     weight_decay: float = 0.01
     validation_split: float = 0.1
     seed: int = 42
@@ -60,10 +60,10 @@ class DonutConfig:
     synthetic_max_samples: int = 100
     
     # Training options
-    gradient_accumulation_steps: int = 1 
+    gradient_accumulation_steps: int = 4 
     max_steps: int = -1
-    save_steps: int = 500
-    eval_steps: int = 250
+    save_steps: int = 100
+    eval_steps: int = 50
     early_stopping_patience: int = 3
 
 
@@ -198,11 +198,6 @@ class DonutFineTuner:
             "<s_email>", "</s_email>",
             "<s_location>", "</s_location>",
             "<s_projects>", "</s_projects>",
-            "<s_certifications>", "</s_certifications>",
-            "<s_languages>", "</s_languages>",
-            "<s_awards>", "</s_awards>",
-            "<s_volunteer>", "</s_volunteer>"
-            
         ]
         processor.tokenizer.add_special_tokens({"additional_special_tokens": special_tokens})
         
@@ -315,9 +310,9 @@ def main():
     """Main script entry point."""
     # Khởi tạo config tối ưu
     config = DonutConfig(
-        num_epochs=50,
-        batch_size=2,                
-        gradient_accumulation_steps=8, 
+        num_epochs=15,
+        batch_size=4,                
+        gradient_accumulation_steps=4, 
         learning_rate=2e-5,
         use_synthetic_dataset=True,  
         use_kaggle_dataset=False,
