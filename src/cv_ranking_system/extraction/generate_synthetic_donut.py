@@ -165,54 +165,7 @@ class SyntheticCVGenerator:
                 "desc": "Implemented a customized order execution gateway with sub-millisecond network latency constraints for high-frequency algorithmic equity pairs."
             }
         ]
-        
-        # 3. Chứng chỉ quốc tế (Certifications) - Từ Tech, Cloud đến Quản lý dự án
-        pool_certs = [
-            "AWS Certified Solutions Architect - Professional (SAP-C02)",
-            "Google Cloud Certified Professional Cloud Architect",
-            "HashiCorp Certified: Terraform Associate",
-            "Certified Kubernetes Administrator (CKA - CNCF)",
-            "Scrum Alliance Certified Scrum Product Owner (CSPO)",
-            "Microsoft Certified: Azure Solutions Architect Expert",
-            "Certified Information Systems Security Professional (CISSP)",
-            "Certified Ethical Hacker (CEH v12 - EC-Council)",
-            "Project Management Professional (PMP - PMI)",
-            "Professional Scrum Master II (PSM II - Scrum.org)",
-            "Oracle Certified Professional: Java SE 17 Developer",
-            "CompTIA Security+ Certification (SY0-601)"
-        ]
-        
-        # 4. Ngôn ngữ (Languages) - Kết hợp nhiều mức độ chứng chỉ thực tế
-        pool_languages = [
-            "English (Full Professional Proficiency / IELTS 8.0)",
-            "Vietnamese (Native or Bilingual Standard Speaker)",
-            "Japanese (JLPT N2 Business Professional Communication)",
-            "German (Goethe-Zertifikat B2 Threshold Standard)",
-            "French (DELF B2 Upper Intermediate Competency)",
-            "Spanish (DELE B1 Intermediate Communication Standard)",
-            "Korean (TOPIK II Level 4 Academic Proficiency)",
-            "Mandarin Chinese (HSK 4 Conversational Standard)"
-        ]
-
-        # 5. Giải thưởng & Thành tích (Awards)
-        pool_awards = [
-            "First Prize - National Technological Innovation Hackathon (2024)",
-            "Dean's List for Academic Excellence - Top 2% Achievement (2022)",
-            "Outstanding Engineer Merit Award - Corporate Annual Review (2025)",
-            "Best Technical Solution - Inter-University Coding Championship (2023)",
-            "Top Innovator Award - Internal R&D Expedition Showcase (2024)",
-            "Valedictorian Graduate with Highest Distinction Honors (2021)"
-        ]
-
-        # 6. Hoạt động ngoại khóa / Tình nguyện (Volunteer)
-        pool_volunteer = [
-            "Technical Team Lead - Open Source Community Project Contributor",
-            "Volunteer Instructor - Coding for Underprivileged Youth Organization",
-            "Core Organizer - TEDx Local Technical Track Operations Setup",
-            "Tech Mentor - Women In Tech Coding Bootcamp Accelerator Program",
-            "Open-Source Maintainer - Distributed Caching Extension Library Group"
-        ]
-
+                
         split_idx = int(len(raw_data) * 0.9)
         splits = {'train': raw_data[:split_idx], 'validation': raw_data[split_idx:]}
         
@@ -262,11 +215,6 @@ class SyntheticCVGenerator:
                     temp_dict["projects"] = [f"{p['name']} ({p['tech']})" for p in chosen_projects]
                     project_descriptions = [p['desc'] for p in chosen_projects]
                     
-                    temp_dict["certifications"] = random.sample(pool_certs, 4) # 4 chứng chỉ
-                    temp_dict["languages"] = random.sample(pool_languages, 2)       # 2 ngôn ngữ
-                    temp_dict["awards"] = random.sample(pool_awards, 2)             # 2 giải thưởng
-                    temp_dict["volunteer"] = random.sample(pool_volunteer, 1)       # 1 hoạt động ngoại khóa
-
                     if not temp_dict: continue
 
                     # ĐỒNG BỘ TOÀN DIỆN GROUND TRUTH VỚI METADATA
@@ -315,27 +263,7 @@ class SyntheticCVGenerator:
                     structured_text_lines.append("SECTION_TITLE: ACADEMIC & EDUCATION BACKGROUND")
                     for edu in temp_dict["education"]:
                         structured_text_lines.append(f"BULLET_HEADER: {edu} (Graduated Timeline Study)")
-                    
-                    # Certifications
-                    structured_text_lines.append("SECTION_TITLE: PROFESSIONAL CERTIFICATIONS")
-                    for cert in temp_dict["certifications"]:
-                        structured_text_lines.append(f"BULLET: {cert}")
-                        
-                    # Awards
-                    structured_text_lines.append("SECTION_TITLE: HONORS & AWARDS")
-                    for award in temp_dict["awards"]:
-                        structured_text_lines.append(f"BULLET: {award}")
-
-                    # Volunteer
-                    structured_text_lines.append("SECTION_TITLE: VOLUNTEER & LEADERSHIP")
-                    for vol in temp_dict["volunteer"]:
-                        structured_text_lines.append(f"BULLET: {vol}")
-
-                    # Languages
-                    structured_text_lines.append("SECTION_TITLE: LANGUAGES")
-                    for lang in temp_dict["languages"]:
-                        structured_text_lines.append(f"BULLET: {lang}")
-
+                                            
                     layout_type = random.choice(["single_column", "two_column"])
                     theme_idx = random.randint(0, len(THEMES) - 1)
 
@@ -384,23 +312,26 @@ class SyntheticCVGenerator:
         image = Image.new("RGB", (self.img_w, self.img_h), theme["bg"])
         draw = ImageDraw.Draw(image)
 
-        # Định hình độ rộng Sidebar lớn hơn một chút (340px) để chứa lượng chữ đậm đặc mới
+        # Định hình độ rộng Sidebar lớn hơn một chút (340px)
         if layout_type == "two_column":
             draw.rectangle([(0, 0), (340, self.img_h)], fill=theme["sidebar_bg"])
 
+        # -------------------------------------------------------------------
+        # TĂNG CỠ CHỮ ĐỒNG LOẠT (Tăng trung bình từ 3-7 point)
+        # -------------------------------------------------------------------
         try:
-            font_title = ImageFont.truetype("liberationb.ttf", 25)
-            font_subtitle = ImageFont.truetype("liberation.ttf", 12)
-            font_header = ImageFont.truetype("liberationb.ttf", 14)
-            font_body = ImageFont.truetype("liberation.ttf", 12)
-            font_body_bold = ImageFont.truetype("liberationb.ttf", 12)
+            font_title = ImageFont.truetype("liberationb.ttf", 32)        # Cũ: 25 -> Mới: 32
+            font_subtitle = ImageFont.truetype("liberation.ttf", 15)      # Cũ: 12 -> Mới: 15
+            font_header = ImageFont.truetype("liberationb.ttf", 18)       # Cũ: 14 -> Mới: 18
+            font_body = ImageFont.truetype("liberation.ttf", 14)          # Cũ: 12 -> Mới: 14
+            font_body_bold = ImageFont.truetype("liberationb.ttf", 14)    # Cũ: 12 -> Mới: 14
         except IOError:
             try:
-                font_title = ImageFont.truetype("calibrib.ttf", 25)
-                font_subtitle = ImageFont.truetype("calibri.ttf", 12)
-                font_header = ImageFont.truetype("calibrib.ttf", 14)
-                font_body = ImageFont.truetype("calibri.ttf", 12)
-                font_body_bold = ImageFont.truetype("calibrib.ttf", 12)
+                font_title = ImageFont.truetype("calibrib.ttf", 32)
+                font_subtitle = ImageFont.truetype("calibri.ttf", 15)
+                font_header = ImageFont.truetype("calibrib.ttf", 18)
+                font_body = ImageFont.truetype("calibri.ttf", 14)
+                font_body_bold = ImageFont.truetype("calibrib.ttf", 14)
             except IOError:
                 font_title = font_subtitle = font_header = font_body = font_body_bold = ImageFont.load_default()
 
@@ -421,7 +352,7 @@ class SyntheticCVGenerator:
 
         y_pointer = 55
 
-        # Render Header
+        # Render Header (Tăng các bước nhảy y_pointer để giãn dòng)
         if layout_type == "single_column":
             for line in header_lines:
                 txt = line.split(":", 1)[1].strip()
@@ -429,16 +360,16 @@ class SyntheticCVGenerator:
                 color = COLOR_PRIMARY if "NAME" in line else COLOR_TEXT_MUTED
                 w = draw.textbbox((0, 0), txt, font=font)[2] - draw.textbbox((0, 0), txt, font=font)[0]
                 draw.text(((self.img_w - w) // 2, y_pointer), txt, font=font, fill=color)
-                y_pointer += 35
-            y_pointer += 10
+                y_pointer += 45  # Cũ: 35 -> Mới: 45
+            y_pointer += 15      # Cũ: 10 -> Mới: 15
         else:
             for line in header_lines:
                 txt = line.split(":", 1)[1].strip()
                 font = font_title if "NAME" in line else font_subtitle
                 color = COLOR_PRIMARY if "NAME" in line else COLOR_TEXT_MUTED
                 draw.text((375, y_pointer), txt, font=font, fill=color)
-                y_pointer += 34
-            y_pointer += 15
+                y_pointer += 40  # Cũ: 34 -> Mới: 40
+            y_pointer += 20      # Cũ: 15 -> Mới: 20
 
         # Hàm render một section block
         def draw_section_block(sec, x_start, max_width, y_start):
@@ -446,32 +377,42 @@ class SyntheticCVGenerator:
             if y > self.img_h - 45: return y
             
             draw.text((x_start, y), sec["title"], font=font_header, fill=COLOR_PRIMARY)
-            y += 18
+            y += 24  # Cũ: 18 -> Mới: 24 (Cách dòng sau tiêu đề)
             draw.line([(x_start, y), (x_start + max_width, y)], fill=COLOR_LINE, width=1)
-            y += 10
+            y += 12  # Cũ: 10 -> Mới: 12 (Cách dòng sau đường kẻ)
             
             for l in sec["lines"]:
                 if y > self.img_h - 45: break
+                
+                # Tăng khoảng cách dòng khi in ra (y += ...)
                 if l.startswith("SUMMARY_TEXT:"):
                     wrapped = self._wrap_text(l.replace("SUMMARY_TEXT:", "").strip(), font_body, max_width, draw)
                     for wl in wrapped:
-                        draw.text((x_start, y), wl, font=font_body, fill=COLOR_TEXT_MAIN); y += 18
-                    y += 4
+                        draw.text((x_start, y), wl, font=font_body, fill=COLOR_TEXT_MAIN)
+                        y += 22  # Cũ: 18 -> Mới: 22
+                    y += 6       # Cũ: 4 -> Mới: 6
+                    
                 elif l.startswith("BULLET_HEADER:"):
                     wrapped = self._wrap_text("• " + l.replace("BULLET_HEADER:", "").strip(), font_body_bold, max_width, draw)
                     for wl in wrapped:
-                        draw.text((x_start, y), wl, font=font_body_bold, fill=COLOR_TEXT_MAIN); y += 18
+                        draw.text((x_start, y), wl, font=font_body_bold, fill=COLOR_TEXT_MAIN)
+                        y += 22  # Cũ: 18 -> Mới: 22
+                        
                 elif l.startswith("BULLET_DESC:"):
                     wrapped = self._wrap_text("- " + l.replace("BULLET_DESC:", "").strip(), font_body, max_width - 15, draw)
                     for wl in wrapped:
-                        draw.text((x_start + 15, y), wl, font=font_body, fill=COLOR_TEXT_MUTED); y += 17
+                        draw.text((x_start + 15, y), wl, font=font_body, fill=COLOR_TEXT_MUTED)
+                        y += 20  # Cũ: 17 -> Mới: 20
+                        
                 elif l.startswith("BULLET:"):
                     wrapped = self._wrap_text("• " + l.replace("BULLET:", "").strip(), font_body, max_width, draw)
                     for idx, wl in enumerate(wrapped):
                         indent = x_start if idx == 0 else x_start + 12
-                        draw.text((indent, y), wl, font=font_body, fill=COLOR_TEXT_MAIN); y += 18
-                    y += 4
-            return y + 14
+                        draw.text((indent, y), wl, font=font_body, fill=COLOR_TEXT_MAIN)
+                        y += 22  # Cũ: 18 -> Mới: 22
+                    y += 6       # Cũ: 4 -> Mới: 6
+            
+            return y + 16  # Cũ: 14 -> Mới: 16 (Khoảng cách giữa các Section)
 
         # --- ĐIỀU PHỐI LAYOUT CHẶT CHẼ ĐỂ TRÁNH TRỐNG TRANG GIẤY ---
         if layout_type == "single_column":
@@ -481,21 +422,18 @@ class SyntheticCVGenerator:
             y_sidebar = 55
             y_main = y_pointer
             
-            # Phân bổ thông minh giúp cả 2 cột dài tương đương nhau và kéo sát chân trang
-            sidebar_keywords = ["COMPETENCIES", "ACADEMIC", "CERTIFICATIONS", "HONORS", "LANGUAGES", "ADDITIONAL"]
+            sidebar_keywords = ["COMPETENCIES", "ACADEMIC", "CERTIFICATIONS", "HONORS", "ADDITIONAL"]
             for sec in sections:
                 is_sidebar = any(kw in sec["title"] for kw in sidebar_keywords)
                 if is_sidebar:
-                    # Cột sidebar trái (rộng 280px bên trong vùng 340px)
                     y_sidebar = draw_section_block(sec, 30, 280, y_sidebar)
                 else:
-                    # Cột main phải (Summary, Experience, Projects, Volunteer)
                     y_main = draw_section_block(sec, 375, 510, y_main)
 
         image.save(output_path, "PNG")
-
+        
 
 if __name__ == "__main__":
     generator = SyntheticCVGenerator()
-    generator.create_clean_metadata(max_samples=150)
+    generator.create_clean_metadata(max_samples=1500)
     generator.generate_images_from_metadata()

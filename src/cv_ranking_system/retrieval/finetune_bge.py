@@ -38,7 +38,7 @@ logger = setup_logger(__name__)
 @dataclass
 class BGEConfig:
     """Configuration for BGE-M3 fine-tuning."""
-    model_name: str = "BAAI/bge-m3"
+    model_name: str = "mixedbread-ai/bge-m3"
     output_dir: str = "./models/bge-m3-finetuned"
     num_epochs: int = 5
     batch_size: int = 8
